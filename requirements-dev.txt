@@ -1,3 +1,4 @@
 -r requirements.txt
 pytest>=8.0
-
+ruff>=0.12
+coverage>=7.6

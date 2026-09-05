@@ -16,19 +16,20 @@ class QueueEtaResult:
 def estimate_queue_eta(items: list[dict[str, Any]], concurrency: int, fallback_speed: float | None, postprocess_seconds: float = 10.0, now: float = 0.0) -> QueueEtaResult:
     """Estimate queue makespan using active slots and FIFO future scheduling."""
     concurrency=max(1,int(concurrency)); relevant=[item for item in items if item.get("status") not in {"Completed","Failed","Cancelled"}]
-    paused=sum(item.get("status") in {"Paused","Pausing…"} for item in relevant)
+    paused=sum(item.get("status") in {"Paused","Pausing…"} or item.get("status","").startswith("Globally paus") for item in relevant)
     if paused:return QueueEtaResult(None,"paused",paused_items=paused)
     slots=[]; unknown=0; known_sizes=0; waiting_for_speed=False; processing=0
-    active=[item for item in relevant if item.get("request") is not None and item.get("status","").startswith(("Downloading","Post-processing"))]
+    active=[item for item in relevant if item.get("request") is not None and item.get("status","").startswith(("Downloading","Post-processing","Retrying failed download"))]
     for item in active:
         status=item.get("status","")
         if status.startswith("Post-processing"):
             processing+=1; elapsed=max(0.0,now-float(item.get("postprocess_started") or now)); slots.append(max(1.0,postprocess_seconds-elapsed)); continue
+        retry_delay=max(0.0,float(item.get("retry_ready_monotonic") or now)-now) if status.startswith("Retrying failed download") else 0.0
         estimate=(item.get("estimate") or {}).get("bytes"); progress=max(0.0,min(100.0,float(item.get("progress") or 0))); speed=item.get("speed_bytes") or fallback_speed
-        if estimate is None:unknown+=1; slots.append(0.0); continue
+        if estimate is None:unknown+=1; slots.append(retry_delay); continue
         known_sizes+=1
-        if not speed or speed<=0:waiting_for_speed=True; slots.append(0.0); continue
-        slots.append(max(0.0,float(estimate)*(1-progress/100.0)/float(speed)))
+        if not speed or speed<=0:waiting_for_speed=True; slots.append(retry_delay); continue
+        slots.append(retry_delay+max(0.0,float(estimate)*(1-progress/100.0)/float(speed)))
     while len(slots)<concurrency:slots.append(0.0)
     future=[item for item in relevant if item.get("status") in {"Waiting","Estimating size…"}]
     for item in future:

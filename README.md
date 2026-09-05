@@ -118,6 +118,8 @@ Selector ini mencerminkan **format ID eksak** dari metadata yt-dlp untuk single-
 - Hanya indeks one-based yang dipilih yang dikirim ke yt-dlp
 
 #### Batch URL (Multi-URL sekaligus)
+
+- Mendukung custom `--extractor-args` per URL dengan format `URL<TAB>EXTRACTOR:ARG=VALUE`; nilai divalidasi, dipakai sejak Analyze hingga download, dan tidak ditampilkan dalam log.
 - Input multi-baris atau import file `.txt` (UTF-8/UTF-16)
 - Validasi & deduplikasi URL
 - Analisis paralel yang dibatasi (bounded workers)

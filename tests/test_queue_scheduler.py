@@ -42,6 +42,12 @@ def test_start_all_explicitly_retries_failed_and_cancelled_items():
     assert harness.started==["failed","cancelled"]
 
 
+def test_start_all_resumes_an_estimate_that_was_cancelled_logically():
+    item=queue_item("estimate","Cancelled");harness=SchedulerHarness([item]);harness.estimators={"estimate":object()}
+    harness.start_all()
+    assert item["status"]=="Estimating size…" and harness.started==[]
+
+
 def test_cancel_all_stops_scheduler_and_cancels_waiting_items():
     active=queue_item("active","Downloading");waiting=queue_item("waiting","Waiting");estimating=queue_item("estimate","Estimating size…")
     harness=SchedulerHarness([active,waiting,estimating]);worker=FakeWorker();harness.workers={"active":worker}

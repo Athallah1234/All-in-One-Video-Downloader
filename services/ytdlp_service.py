@@ -17,7 +17,7 @@ class YTDLPLogger:
     def error(self,msg): self.logger.error(msg)
 
 class YTDLPService:
-    def __init__(self, logger): self.logger=logger;self.integrity=IntegrityService(logger);self.cookie_source:BrowserCookieSource|None=None;self.cookie_file:str|None=None;self.runtime_options={};self.flat_playlist=True;self.subtitle_options={};self.ffmpeg_threads=0
+    def __init__(self, logger): self.logger=logger;self.integrity=IntegrityService(logger);self.cookie_source:BrowserCookieSource|None=None;self.cookie_file:str|None=None;self.runtime_options={};self.flat_playlist=True;self.channel_analysis_limit=500;self.subtitle_options={};self.ffmpeg_threads=0
     def configure(self,settings) -> None:
         def enabled(key,default=False):return str(settings.value(key,default)).lower() in {"true","1","yes"}
         def number(key,default):
@@ -49,7 +49,13 @@ class YTDLPService:
         if family=="IPv4":self.runtime_options["source_address"]="0.0.0.0"
         elif family=="IPv6":self.runtime_options["source_address"]="::"
         if enabled("ytdlp/prefer_free_formats",False):self.runtime_options["prefer_free_formats"]=True
+        backend=str(settings.value("downloads/backend","Native"))
+        if backend=="aria2c":
+            from services.aria2_service import Aria2Service
+            try:self.runtime_options.update(Aria2Service.build_options(str(settings.value("downloads/aria2_location","") or ""),number("downloads/aria2_connections",16),number("downloads/aria2_split",16),number("downloads/aria2_min_split_mib",1),number("downloads/aria2_max_tries",5),number("downloads/aria2_retry_wait",1),number("downloads/aria2_timeout",20),str(settings.value("downloads/aria2_file_allocation","none")),enabled("downloads/aria2_fragments",False)));self.logger.info("aria2c external download backend enabled")
+            except ValueError as exc:self.logger.error("aria2c backend disabled: %s",exc)
         self.flat_playlist=enabled("ytdlp/flat_playlist",True)
+        self.channel_analysis_limit=number("ytdlp/channel_analysis_limit",500)
         languages=[value.strip() for value in str(settings.value("subtitles/languages","all")).split(",") if value.strip()]
         subtitle_format=str(settings.value("subtitles/format","best"));convert=str(settings.value("subtitles/convert","none"))
         self.subtitle_options={"subtitleslangs":languages or ["all"],"writesubtitles":enabled("subtitles/manual",True),"writeautomaticsub":enabled("subtitles/automatic",True),"embedsubtitles":enabled("subtitles/embed",False),"subtitlesformat":subtitle_format}
@@ -76,9 +82,26 @@ class YTDLPService:
             extractor_args["youtube"]=youtube_args
             opts["extractor_args"]=extractor_args
         return opts
-    def extract_info(self,url: str) -> dict[str,Any]:
-        opts=self.base_options()|{"skip_download":True,"extract_flat":"in_playlist" if self.flat_playlist else False}
-        with yt_dlp.YoutubeDL(opts) as ydl: return ydl.extract_info(url,download=False)
+    @staticmethod
+    def merge_extractor_args(defaults:dict|None,custom:dict|None) -> dict:
+        merged={name:{key:list(values) for key,values in arguments.items()} for name,arguments in (defaults or {}).items()}
+        for name,arguments in (custom or {}).items():merged.setdefault(name,{}).update({key:list(values) for key,values in arguments.items()})
+        return merged
+    def extract_info(self,url: str,extractor_args:dict|None=None) -> dict[str,Any]:
+        opts=self.base_options()|{"skip_download":True,"extract_flat":"in_playlist" if self.flat_playlist else False,"allow_unplayable_formats":True}
+        from utils.channels import looks_like_channel_url,is_channel_info
+        channel_hint=looks_like_channel_url(url)
+        if channel_hint and self.channel_analysis_limit>0:opts["playlistend"]=self.channel_analysis_limit
+        if extractor_args:opts["extractor_args"]=self.merge_extractor_args(opts.get("extractor_args"),extractor_args)
+        with yt_dlp.YoutubeDL(opts) as ydl:result=ydl.extract_info(url,download=False)
+        if isinstance(result,dict) and (channel_hint or is_channel_info(result,url)):
+            entries=result.get("entries");loaded=len(entries) if isinstance(entries,list) else 0;advertised=result.get("playlist_count") or result.get("channel_follower_count")
+            result["_app_is_channel"]=True;result["_app_channel_loaded"]=loaded;result["_app_channel_limit"]=self.channel_analysis_limit;result["_app_channel_truncated"]=bool(self.channel_analysis_limit and loaded>=self.channel_analysis_limit and (not isinstance(advertised,int) or advertised>loaded))
+        if isinstance(result,dict) and isinstance(result.get("formats"),list):
+            from utils.drm import drm_report
+            result["_app_drm_report"]=drm_report(result["formats"])
+        if not isinstance(result,dict):raise RuntimeError("yt-dlp returned no metadata for this URL")
+        return result
     @staticmethod
     def wait_while_paused(pause: Event, cancel: Event, pause_changed: Callable[[bool],None]) -> None:
         if not pause.is_set(): return
@@ -110,14 +133,20 @@ class YTDLPService:
             self.wait_while_paused(pause,cancel,pause_changed)
             postprocess(data)
         opts=self.build_options(request)|{"progress_hooks":[hook],"postprocessor_hooks":[postprocess_hook]}
-        with yt_dlp.YoutubeDL(opts) as ydl:result=ydl.extract_info(request.url,download=True)
-        if isinstance(result,dict):result["_observed_output_paths"]=sorted(observed_paths)
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            if request.custom_video_filter or request.custom_audio_filter:
+                from services.custom_ffmpeg_filter import CustomFFmpegFilterPP
+                ydl.add_post_processor(CustomFFmpegFilterPP(ydl,request.custom_video_filter,request.custom_audio_filter,request.custom_video_encoder,request.custom_audio_encoder,self.ffmpeg_threads),when="post_process")
+            result=ydl.extract_info(request.url,download=True)
+        if not isinstance(result,dict):raise RuntimeError("yt-dlp returned no download result; every selected item may have failed or become unavailable")
+        result["_observed_output_paths"]=sorted(observed_paths)
         return result
     def build_options(self,r: DownloadRequest) -> dict[str,Any]:
         out=str(Path(r.folder) / r.output_template)
-        keep_audio_cover=r.download_type=="Audio Only" and r.audio_keep_thumbnail;keep_video_poster=r.download_type in {"Video","Video Only"} and r.video_keep_thumbnail;opts=self.base_options()|{"outtmpl":out,"format":r.format_selector,"continuedl":True,"windowsfilenames":True,"writethumbnail":r.embed_thumbnail or keep_audio_cover or keep_video_poster,"writeinfojson":r.write_info_json,"addmetadata":r.embed_metadata}
+        keep_audio_cover=r.download_type=="Audio Only" and r.audio_keep_thumbnail;keep_video_poster=r.download_type in {"Video","Video Only"} and r.video_keep_thumbnail;opts=self.base_options()|{"outtmpl":out,"format":r.format_selector,"continuedl":True,"windowsfilenames":True,"allow_unplayable_formats":False,"writethumbnail":r.embed_thumbnail or keep_audio_cover or keep_video_poster,"writeinfojson":r.write_info_json,"addmetadata":r.embed_metadata}
         from services.ffmpeg_service import FFmpegService
         if FFmpegService._location:opts["ffmpeg_location"]=FFmpegService._location
+        if r.extractor_args:opts["extractor_args"]=self.merge_extractor_args(opts.get("extractor_args"),r.extractor_args)
         if self.ffmpeg_threads:opts["postprocessor_args"]={"ffmpeg_o":["-threads",str(self.ffmpeg_threads)]}
         if r.playlist_items:
             opts["playlist_items"]=",".join(str(index) for index in r.playlist_items)
@@ -151,6 +180,21 @@ class YTDLPService:
         elif r.download_type == "Subtitle Only": opts.update({"skip_download":True,"writesubtitles":True}|self.subtitle_options)
         elif r.download_type == "Metadata Only": opts.update({"skip_download":True,"writeinfojson":True})
         if r.subtitles: opts.update({"writesubtitles":True}|self.subtitle_options)
+        if r.sponsorblock_enabled:
+            from utils.sponsorblock import validate_sponsorblock
+            report=validate_sponsorblock(r.sponsorblock_mark,r.sponsorblock_remove,r.sponsorblock_api,r.sponsorblock_chapter_title)
+            if not report.valid:raise ValueError(f"Invalid SponsorBlock configuration: {report.error}")
+            categories=set(r.sponsorblock_mark)|set(r.sponsorblock_remove)
+            if categories:
+                processors=opts.setdefault("postprocessors",[])
+                processors.insert(0,{"key":"SponsorBlock","categories":categories,"api":r.sponsorblock_api.rstrip("/"),"when":"after_filter"})
+                modify={"key":"ModifyChapters","remove_chapters_patterns":[],"remove_sponsor_segments":set(r.sponsorblock_remove),"remove_ranges":[],"sponsorblock_chapter_title":r.sponsorblock_chapter_title,"force_keyframes":r.sponsorblock_force_keyframes}
+                insertion=next((index for index,item in enumerate(processors) if item.get("key") in {"FFmpegMetadata","EmbedThumbnail"}),len(processors))
+                processors.insert(insertion,modify)
+                if r.sponsorblock_mark:
+                    metadata=next((item for item in processors if item.get("key")=="FFmpegMetadata"),None)
+                    if metadata:metadata["add_chapters"]=True
+                    else:processors.append({"key":"FFmpegMetadata","add_metadata":False,"add_chapters":True,"add_infojson":False})
         return opts
 
     @staticmethod
@@ -195,6 +239,8 @@ class YTDLPService:
         result=self.estimate_info_size(info or {})
         if request.download_type=="Audio Only" and result["bytes"] is not None:result["confidence"]="approximate"
         if request.output_container!="auto" and result["bytes"] is not None:result["confidence"]="approximate"
+        if (request.custom_video_filter or request.custom_audio_filter) and result["bytes"] is not None:result["confidence"]="approximate"
+        if request.sponsorblock_enabled and request.sponsorblock_remove and result["bytes"] is not None:result["confidence"]="approximate"
         return result
     def verify_download(self,info: dict[str,Any],request: DownloadRequest,cancel: Event) -> dict[str,Any]:return self.integrity.verify(info,request,cancel).to_dict()
     def quarantine_corrupt(self,paths: list[str],folder: str) -> list[str]:return self.integrity.quarantine(paths,folder)

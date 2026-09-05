@@ -26,6 +26,17 @@ class DownloadRequest:
     video_keep_thumbnail: bool = False
     video_embed_chapters: bool = True
     video_embed_infojson: bool = False
+    extractor_args: dict[str,dict[str,list[str]]] = field(default_factory=dict)
+    custom_video_filter: str = ""
+    custom_audio_filter: str = ""
+    custom_video_encoder: str = "auto"
+    custom_audio_encoder: str = "auto"
+    sponsorblock_enabled: bool = False
+    sponsorblock_mark: set[str] = field(default_factory=set)
+    sponsorblock_remove: set[str] = field(default_factory=set)
+    sponsorblock_api: str = "https://sponsor.ajay.app"
+    sponsorblock_chapter_title: str = "[SponsorBlock]: %(category_names)l"
+    sponsorblock_force_keyframes: bool = False
     subtitles: bool = False
     subtitle_languages: list[str] = field(default_factory=lambda: ["all"])
     embed_metadata: bool = True

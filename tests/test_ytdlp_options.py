@@ -1,6 +1,30 @@
 from models.download import DownloadRequest
 from services.ytdlp_service import YTDLPService
 import logging
+from threading import Event
+
+def test_empty_extractor_result_is_reported_as_failure(monkeypatch):
+    class EmptyYDL:
+        def __init__(self,_options):pass
+        def __enter__(self):return self
+        def __exit__(self,*_args):pass
+        def extract_info(self,_url,download=False):return None
+    monkeypatch.setattr("services.ytdlp_service.yt_dlp.YoutubeDL",EmptyYDL)
+    try:YTDLPService(logging.getLogger("test")).extract_info("https://example.com/empty")
+    except RuntimeError as exc:assert "no metadata" in str(exc)
+    else:raise AssertionError("empty metadata was accepted")
+
+def test_empty_download_result_is_reported_as_failure(monkeypatch,tmp_path):
+    class EmptyYDL:
+        def __init__(self,_options):pass
+        def __enter__(self):return self
+        def __exit__(self,*_args):pass
+        def extract_info(self,_url,download=False):return None
+    monkeypatch.setattr("services.ytdlp_service.yt_dlp.YoutubeDL",EmptyYDL)
+    request=DownloadRequest("https://example.com/empty","Empty",str(tmp_path))
+    try:YTDLPService(logging.getLogger("test")).download(request,lambda _data:None,lambda _data:None,Event(),Event(),lambda _paused:None)
+    except RuntimeError as exc:assert "no download result" in str(exc)
+    else:raise AssertionError("empty download result was accepted")
 
 def test_audio_options(tmp_path):
     request=DownloadRequest("https://example.com","Example",str(tmp_path),download_type="Audio Only",audio_format="mp3",audio_quality="192")

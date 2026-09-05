@@ -24,7 +24,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QWidget,QSizePolicy
         w=QWidget(); w.setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Preferred); return w
     def shortcuts(self):
-        QShortcut(QKeySequence("Ctrl+L"),self,activated=self.downloader.url.setFocus); QShortcut(QKeySequence("Ctrl+Enter"),self,activated=self.downloader.analyze); QShortcut(QKeySequence("Ctrl+H"),self,activated=lambda:self.tabs.setCurrentIndex(1)); QShortcut(QKeySequence("Ctrl+Shift+L"),self,activated=lambda:self.tabs.setCurrentIndex(2)); QShortcut(QKeySequence("Ctrl+,"),self,activated=self.open_settings); QShortcut(QKeySequence("Ctrl+Q"),self,activated=self.close)
+        QShortcut(QKeySequence("Ctrl+L"),self,activated=self.downloader.url.setFocus); QShortcut(QKeySequence("Ctrl+Enter"),self,activated=self.downloader.analyze); QShortcut(QKeySequence("Ctrl+H"),self,activated=lambda:self.tabs.setCurrentIndex(1)); QShortcut(QKeySequence("Ctrl+Shift+L"),self,activated=lambda:self.tabs.setCurrentIndex(2));QShortcut(QKeySequence("Ctrl+Shift+P"),self,activated=self.downloader.toggle_global_pause); QShortcut(QKeySequence("Ctrl+,"),self,activated=self.open_settings); QShortcut(QKeySequence("Ctrl+Q"),self,activated=self.close)
     def sites(self): SupportedSitesDialog(self).exec()
     def open_settings(self):
         dialog=SettingsDialog(self.settings,self);dialog.settings_applied.connect(self.apply_settings);dialog.exec()
@@ -36,7 +36,9 @@ class MainWindow(QMainWindow):
         if index>=0 and self.downloader.container.model().item(index).isEnabled():self.downloader.container.setCurrentIndex(index)
     def apply_theme(self):
         theme=self.settings.value("appearance/theme","Dark");compact="QPushButton,QLineEdit,QComboBox,QSpinBox{padding:3px;}" if str(self.settings.value("appearance/compact",False)).lower() in {"true","1","yes"} else "";QApplication.instance().setStyleSheet((LIGHT if theme in ("Light","System") else DARK)+compact)
-        font=QApplication.instance().font();font.setPointSize(max(8,min(20,int(self.settings.value("appearance/font_size",10)))));QApplication.instance().setFont(font);self.statusBar().setVisible(str(self.settings.value("appearance/statusbar",True)).lower() in {"true","1","yes"})
+        try:font_size=int(self.settings.value("appearance/font_size",10))
+        except (TypeError,ValueError):font_size=10
+        font=QApplication.instance().font();font.setPointSize(max(8,min(20,font_size)));QApplication.instance().setFont(font);self.statusBar().setVisible(str(self.settings.value("appearance/statusbar",True)).lower() in {"true","1","yes"})
         alternating=str(self.settings.value("appearance/alternating_rows",True)).lower() in {"true","1","yes"}
         for table in self.findChildren(__import__("PySide6.QtWidgets",fromlist=["QTableWidget"]).QTableWidget):table.setAlternatingRowColors(alternating)
         self.downloader.preview_panel.setVisible(str(self.settings.value("appearance/show_preview",True)).lower() in {"true","1","yes"})
