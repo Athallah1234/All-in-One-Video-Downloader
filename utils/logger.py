@@ -11,7 +11,12 @@ class QtLogHandler(logging.Handler):
     def __init__(self, emitter: LogEmitter):
         super().__init__(); self.emitter = emitter
     def emit(self, record: logging.LogRecord) -> None:
-        self.emitter.message.emit(record.levelname, self.format(record))
+        try:self.emitter.message.emit(record.levelname, self.format(record))
+        except RuntimeError:
+            # The application can close while a yt-dlp worker is still
+            # unwinding. A deleted Qt receiver must never break logging or be
+            # raised back into yt-dlp as an extraction failure.
+            pass
 
 class RedactingFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
@@ -31,4 +36,3 @@ def setup_logging() -> tuple[logging.Logger, LogEmitter]:
         for handler in logger.handlers:
             if isinstance(handler, QtLogHandler): handler.emitter = emitter
     return logger, emitter
-

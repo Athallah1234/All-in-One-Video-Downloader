@@ -285,21 +285,28 @@ class DownloaderTab(QWidget):
     def start_estimate(self,item):
         req=item["request"]; worker=SizeEstimateWorker(self.service,req); self.estimators[req.id]=worker; worker.signals.estimate.connect(lambda result,i=item:self.estimate_ready(i,result)); worker.signals.failed.connect(lambda error,i=item:self.estimate_failed(i,error)); self.estimate_pool.start(worker)
     def estimate_ready(self,item,result):
-        req=item["request"]; self.estimators.pop(req.id,None); confidence=result.get("confidence","unknown"); size=result.get("bytes")
+        req=item["request"]; self.estimators.pop(req.id,None)
+        if item.get("status")=="Cancelled":self.render_queue();return
+        confidence=result.get("confidence","unknown"); size=result.get("bytes")
         if size is None:item["estimated_size"]="Unknown"
         elif confidence=="exact":item["estimated_size"]=f"{format_size(size)} (exact)"
         elif confidence=="partial":item["estimated_size"]=f"~{format_size(size)} (partial {result.get('known_items',0)}/{result.get('total_items',0)})"
         else:item["estimated_size"]=f"~{format_size(size)}"
         item["estimate"] = result; item["status"]="Waiting"; self.logger.info("Estimated size for %s: %s",req.title,item["estimated_size"]); self.render_queue(); self.start_available()
     def estimate_failed(self,item,error):
-        req=item["request"]; self.estimators.pop(req.id,None); item["estimated_size"]="Unknown"; item["estimate_error"]=error; item["status"]="Waiting"; self.logger.warning("Size estimate unavailable for %s: %s",req.title,error); self.render_queue(); self.start_available()
-    def start_all(self):self.queue_run_enabled=True;self.start_available()
+        req=item["request"]; self.estimators.pop(req.id,None)
+        if item.get("status")=="Cancelled":self.render_queue();return
+        item["estimated_size"]="Unknown"; item["estimate_error"]=error; item["status"]="Waiting"; self.logger.warning("Size estimate unavailable for %s: %s",req.title,error); self.render_queue(); self.start_available()
+    def start_all(self):
+        for item in self.queue:
+            if item["status"] in {"Failed","Cancelled"} and item["request"].id not in self.estimators:item["status"]="Waiting"
+        self.queue_run_enabled=True;self.start_available()
     def start_available(self):
         if not self.queue_run_enabled:return
         limit=int(self.settings.value("downloads/concurrent",2)); active=len(self.workers)
         for item in self.queue:
             if active>=limit:break
-            if item["status"] in ("Waiting","Failed","Cancelled"):active+=bool(self.start_item(item))
+            if item["status"]=="Waiting":active+=bool(self.start_item(item))
     def start_item(self,item):
         reserve=max(0,int(self.settings.value("downloads/minimum_free_mib",256)))*1024*1024;estimated=int((item.get("estimate") or {}).get("bytes") or 0)
         try:free=shutil.disk_usage(item["request"].folder).free
@@ -365,8 +372,11 @@ class DownloaderTab(QWidget):
         if str(self.settings.value("notifications/sound",False)).lower() in {"true","1","yes"}:QApplication.beep()
     def cancelled(self,item): self.workers.pop(item["request"].id,None); item["status"]="Cancelled";self.notify_user("cancelled",f"Cancelled: {item['request'].title}"); self.render_queue(); self.active_changed.emit(len(self.workers)); self.start_available()
     def cancel_all(self):
+        self.queue_run_enabled=False
         for item in self.queue:
             if item["request"].id in self.workers:self.cancel_item(item)
+            elif item["status"] not in {"Completed","Failed","Cancelled"}:item["status"]="Cancelled"
+        self.render_queue()
     def clear_completed(self): self.queue[:]=[i for i in self.queue if i["status"]!="Completed"]; self.render_queue()
     def queue_menu(self,pos):
         row=self.table.rowAt(pos.y());

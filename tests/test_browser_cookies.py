@@ -31,6 +31,7 @@ def test_cookie_settings_are_opt_in(tmp_path):
 def test_cookie_option_reaches_analysis_estimation_and_download_options(tmp_path):
     service=YTDLPService(logging.getLogger("test"));source=BrowserCookieSource("edge","Default");service.set_cookie_source(source)
     assert service.base_options()["cookiesfrombrowser"]==source.as_ytdlp_tuple()
+    assert service.base_options()["extractor_args"]["youtube"]["player_client"]==["default","web_embedded"]
     request=DownloadRequest("https://example.com","Example",str(tmp_path))
     assert service.build_options(request)["cookiesfrombrowser"]==source.as_ytdlp_tuple()
     service.set_cookie_source(None)
@@ -66,3 +67,15 @@ def test_service_uses_exactly_one_cookie_source(tmp_path):
     assert options["cookiefile"]==str(cookie_file) and "cookiesfrombrowser" not in options
     service.set_cookie_source(BrowserCookieSource("edge"));options=service.base_options()
     assert options["cookiesfrombrowser"][0]=="edge" and "cookiefile" not in options
+
+
+def test_manual_cookie_file_enables_authenticated_youtube_clients(tmp_path):
+    cookie_file=tmp_path/"cookies.txt";cookie_file.write_text("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSAPISID\tsecret\n",encoding="utf-8")
+    service=YTDLPService(logging.getLogger("test"));service.set_cookie_file(str(cookie_file));options=service.base_options()
+    assert options["cookiefile"]==str(cookie_file)
+    assert options["extractor_args"]["youtube"]["player_client"]==["default","web_embedded"]
+
+
+def test_unauthenticated_requests_keep_ytdlp_default_clients():
+    service=YTDLPService(logging.getLogger("test"))
+    assert "extractor_args" not in service.base_options()

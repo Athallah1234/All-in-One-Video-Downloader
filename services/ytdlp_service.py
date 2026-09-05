@@ -65,6 +65,16 @@ class YTDLPService:
         opts={"quiet":True,"no_warnings":False,"logger":YTDLPLogger(self.logger),"noplaylist":False}|self.runtime_options
         if self.cookie_file:opts["cookiefile"]=self.cookie_file
         elif self.cookie_source:opts["cookiesfrombrowser"]=self.cookie_source.as_ytdlp_tuple()
+        if self.cookie_file or self.cookie_source:
+            # Logged-in YouTube's current default tv client can return "The
+            # page needs to be reloaded" and fail age-gated extraction. Keep
+            # the normal client set and add the cookie-compatible embedded web
+            # fallback recommended by yt-dlp for authenticated requests.
+            extractor_args=dict(opts.get("extractor_args") or {})
+            youtube_args=dict(extractor_args.get("youtube") or {})
+            youtube_args.setdefault("player_client",["default","web_embedded"])
+            extractor_args["youtube"]=youtube_args
+            opts["extractor_args"]=extractor_args
         return opts
     def extract_info(self,url: str) -> dict[str,Any]:
         opts=self.base_options()|{"skip_download":True,"extract_flat":"in_playlist" if self.flat_playlist else False}
