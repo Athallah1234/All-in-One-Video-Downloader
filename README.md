@@ -1,4 +1,4 @@
-﻿# ↓ Simple Video Downloader
+# ↓ Simple Video Downloader
 
 <div align="center">
 
@@ -221,6 +221,8 @@ Simple Video Downloader mendukung **lebih dari 1.000+ situs** melalui yt-dlp, te
 # 1. Clone atau unduh repository ini
 git clone https://github.com/username/simple-video-downloader.git
 cd simple-video-downloader
+git clone https://github.com/Athallah1234/All-in-One-Video-Downloader.git
+cd All-in-One-Video-Downloader
 
 # 2. (Opsional, sangat direkomendasikan) Buat virtual environment
 python -m venv .venv
