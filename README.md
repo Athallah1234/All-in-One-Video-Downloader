@@ -219,8 +219,6 @@ Simple Video Downloader mendukung **lebih dari 1.000+ situs** melalui yt-dlp, te
 
 ```bash
 # 1. Clone atau unduh repository ini
-git clone https://github.com/username/simple-video-downloader.git
-cd simple-video-downloader
 git clone https://github.com/Athallah1234/All-in-One-Video-Downloader.git
 cd All-in-One-Video-Downloader
 
@@ -236,12 +234,6 @@ source .venv/bin/activate
 # 3. Install dependensi
 pip install -r requirements.txt
 ```
-
-### Metode 2: Dari File ZIP
-
-1. Ekstrak `Simple-Video-Downloader.zip`
-2. Buka terminal di folder hasil ekstrak
-3. Jalankan: `pip install -r requirements.txt`
 
 ### Instalasi FFmpeg (Sangat Direkomendasikan)
 
