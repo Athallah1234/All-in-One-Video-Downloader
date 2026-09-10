@@ -1,0 +1,47 @@
+﻿---
+name: "\U0001F41B Bug Report"
+about: "Laporkan sesuatu yang tidak berjalan sebagaimana mestinya"
+title: "[BUG] "
+labels: ["bug", "needs-triage"]
+assignees: ""
+---
+
+## Deskripsi Bug
+<!-- Penjelasan singkat dan jelas tentang masalahnya -->
+
+## Langkah Reproduksi
+1. Buka aplikasi
+2. Masukkan URL '...'
+3. Pilih mode '...'
+4. ...
+5. Error terjadi: '...'
+
+## Perilaku yang Diharapkan
+<!-- Apa yang seharusnya terjadi -->
+
+## Perilaku Aktual
+<!-- Apa yang sebenarnya terjadi -->
+
+## Screenshot / Log
+<!-- Tempel log dari tab Log di aplikasi, atau screenshot jika relevan -->
+<details>
+<summary>Log Output</summary>
+
+```
+Tempel log di sini
+```
+
+</details>
+
+## Environment
+
+| Komponen | Versi |
+|----------|-------|
+| OS | <!-- misal: Windows 11 22H2 64-bit --> |
+| Python | <!-- output: python --version --> |
+| yt-dlp | <!-- output: pip show yt-dlp --> |
+| PySide6 | <!-- output: pip show PySide6 --> |
+| FFmpeg | <!-- output: ffmpeg -version (jika relevan) --> |
+
+## Informasi Tambahan
+<!-- Konteks lain yang mungkin relevan -->

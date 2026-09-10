@@ -1,0 +1,77 @@
+﻿# ============================================================
+# Simple Video Downloader — .gitignore
+# ============================================================
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+MANIFEST
+.eggs/
+
+# PyInstaller
+*.spec
+dist/
+build/
+
+# Unit test / coverage reports
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Type checkers & linters
+.mypy_cache/
+.ruff_cache/
+.pyright/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS generated
+desktop.ini
+ehthumbs.db
+
+# Application runtime data (created automatically)
+data/*
+logs/*
+downloads/*
+
+# Preserve placeholder files for empty tracked directories
+!data/.gitkeep
+!logs/.gitkeep
+!downloads/.gitkeep
+
+# Sensitive files
+*.netrc
+cookies.txt
+*.env
+.env.*
+secrets.*
+
+# Zip artifacts
+*.zip
