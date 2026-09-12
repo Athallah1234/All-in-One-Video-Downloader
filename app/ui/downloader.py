@@ -362,10 +362,10 @@ class DownloaderTab(QWidget):
         lines = self.batch_urls()
         valid = bool(lines) and all(valid_url(url) for url in lines) if self.mode == "Batch URL" else valid_url(self.url.text())
         resolving = self.resolution_worker is not None
-        self.download_button.setEnabled(valid and not resolving and self.worker is None)
+        self.download_button.setEnabled(valid and not resolving and self.worker is None and self.batch_validation_worker is None)
         self.analyze_button.setEnabled(valid_url(self.url.text()) and self.worker is None and not resolving)
         self.batch_validate_button.setEnabled(self.batch_validation_worker is None)
-        self.selected_button.setEnabled(self.info is not None and self.analyzed_url == self.url.text().strip() and self.analyzed_mode == self.mode and self.items_table.rowCount() > 0)
+        self.selected_button.setEnabled(self.worker is None and not resolving and self.info is not None and self.analyzed_url == self.url.text().strip() and self.analyzed_mode == self.mode and self.items_table.rowCount() > 0)
 
     def url_changed(self):
         self.info = None
@@ -539,7 +539,7 @@ class DownloaderTab(QWidget):
             self.batch_validate_button.setText("Expanding…")
             worker = FunctionWorker(lambda: self.expand_batch_urls(urls), self)
             self.batch_validation_worker = worker
-            worker.result.connect(self.batch_urls_expanded)
+            worker.result.connect(lambda payload: self.batch_urls_expanded(payload, urls))
             worker.failed.connect(lambda error: QMessageBox.warning(self, "Short URL expansion failed", error))
             worker.finished.connect(self.batch_expansion_finished)
             worker.start()
@@ -562,7 +562,9 @@ class DownloaderTab(QWidget):
                 expanded.append(url)
         return expanded, errors
 
-    def batch_urls_expanded(self, payload):
+    def batch_urls_expanded(self, payload, original_urls=None):
+        if original_urls is not None and self.batch_urls() != original_urls:
+            return
         urls, errors = payload
         self.batch.setPlainText("\n".join(urls))
         self.show_batch_validation(urls, errors)
@@ -702,6 +704,8 @@ class DownloaderTab(QWidget):
         self.download(items=",".join(selected))
 
     def download(self, checked=False, items=None):
+        if self.worker or self.batch_validation_worker:
+            return
         preferences = self.preferences()
         if items is not None:
             preferences.update(items=items, channel_selection="Custom Playlist Items")
@@ -719,6 +723,8 @@ class DownloaderTab(QWidget):
             if not self.confirm_detected_mode(detect_url_type(urls[0])):
                 return
             preferences = self.preferences()
+            if items is not None:
+                preferences.update(items=items, channel_selection="Custom Playlist Items")
         if self.mode == "Channel":
             count = len((self.info or {}).get("entries", [])) if self.analyzed_url == urls[0] else 0
             limit = len(items.split(",")) if items else preferences["number"] if preferences["channel_selection"] in {"Latest N Videos", "Oldest N Videos"} else count
@@ -750,7 +756,7 @@ class DownloaderTab(QWidget):
         if self.worker:
             return
         self.worker = FunctionWorker(lambda: [(url, analyze_outputs(url, preferences)) for url in urls], self)
-        self.worker.result.connect(lambda infos: self.finish_existing_file_preflight(infos, urls, preferences, mode))
+        self.worker.result.connect(lambda infos: self.finish_existing_file_preflight(infos, urls, preferences, mode, already_selected=True))
         self.worker.failed.connect(lambda error: QMessageBox.warning(
             self, "Existing-file check failed", "The destination contains files, but output names could not be checked before download.\n\n" + error))
         self.worker.finished.connect(self.analysis_finished)
@@ -759,14 +765,14 @@ class DownloaderTab(QWidget):
         self.worker.start()
         self.update_enabled()
 
-    def finish_existing_file_preflight(self, infos, urls, preferences, mode):
+    def finish_existing_file_preflight(self, infos, urls, preferences, mode, *, already_selected=False):
         current_urls = self.batch_urls() if self.mode == "Batch URL" else [self.url.text().strip()]
         if mode != self.mode or urls != current_urls:
             return
         conflicts = []
         try:
             for _, info in infos:
-                conflicts.extend(existing_output_files(info, preferences))
+                conflicts.extend(existing_output_files(info, preferences, already_selected=already_selected))
         except (ValueError, OSError, TypeError) as error:
             QMessageBox.warning(self, "Existing-file check failed", str(error))
             return

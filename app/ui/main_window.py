@@ -165,8 +165,14 @@ class MainWindow(QMainWindow):
 
     def retry_history(self, record):
         preferences = self.settings.values.copy()
-        preferences.update(json.loads(record["preferences"] or "{}"))
         try:
+            saved = json.loads(record["preferences"] or "{}")
+            if not isinstance(saved, dict):
+                raise ValueError("History preferences are invalid.")
+            preferences.update(saved)
+            preferences["mode"] = record["media_type"]
+            if not valid_url(record["source_url"]):
+                raise ValueError("History does not contain a valid HTTP/HTTPS URL.")
             build_options(preferences)
             self.manager.add(record["source_url"], preferences, record["media_type"])
             self.tabs.setCurrentIndex(0)
@@ -194,7 +200,9 @@ class MainWindow(QMainWindow):
         self.clipboard_banner.hide()
 
     def busy(self):
-        return bool(self.manager.workers or self.downloader.worker or self.sites_dialog and self.sites_dialog.worker)
+        return bool(self.manager.workers or self.downloader.worker
+                    or self.downloader.resolution_worker or self.downloader.batch_validation_worker
+                    or self.sites_dialog and self.sites_dialog.worker)
 
     def closeEvent(self, event):
         if self.exiting:

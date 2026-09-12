@@ -1,6 +1,7 @@
 """Translate UI preferences into a restricted YoutubeDL configuration."""
 from pathlib import Path
 import shlex
+import math
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DateRange, parse_bytes
 from app.core.ffmpeg import detect
@@ -52,7 +53,7 @@ def extra_options(text: str) -> dict:
             key, parser = value_options[token]
             try:
                 value = parser(next(tokens))
-                if value is None or value < 0:
+                if value is None or value < 0 or not math.isfinite(value):
                     raise ValueError()
             except (StopIteration, ValueError):
                 raise ValueError(f"Invalid value for {token}") from None
@@ -135,16 +136,16 @@ def build_options(p: dict, analyze: bool = False) -> dict:
         return opts
     opts["format"] = "bestvideo/bestaudio/best" if mode in {"Subtitle", "Metadata"} else vr_selector(p, bool(ff["ffmpeg"])) if mode == "360° / VR" else selector(p, bool(ff["ffmpeg"]))
     post = []
-    audio = mode == "Audio" or p.get("format") == "Audio Only"
+    audio = mode not in {"Subtitle", "Metadata"} and (mode == "Audio" or p.get("format") == "Audio Only")
     audio_format = p.get("audio_format", "MP3")
     if audio and audio_format != "Best Audio":
         post.append({"key": "FFmpegExtractAudio", "preferredcodec": audio_format.lower(), "preferredquality": "0" if p.get("audio_quality", "Best") == "Best" else p["audio_quality"].split()[0]})
         opts["final_ext"] = {"vorbis": "ogg"}.get(audio_format.lower(), audio_format.lower())
     container = p.get("container", "Auto")
-    if container != "Auto" and mode not in {"Audio", "Subtitle", "Metadata"}:
+    if container != "Auto" and not audio and p.get("format") != "Best Audio" and mode not in {"Subtitle", "Metadata"}:
         opts["merge_output_format"] = container.lower()
         post.append({"key": "FFmpegVideoRemuxer", "preferedformat": container.lower()})
-    opts.update(writesubtitles=p.get("subtitles", False) or mode == "Subtitle" and p.get("manual_subtitles", True),
+    opts.update(writesubtitles=p.get("manual_subtitles", True) if mode == "Subtitle" else p.get("subtitles", False) or p.get("embed_subtitle", False),
                 writeautomaticsub=p.get("auto_subtitles", False),
                 subtitleslangs=["all", "-live_chat"] if p.get("all_languages") else [x.strip() for x in p.get("languages", "en").split(",") if x.strip()],
                 subtitlesformat="best" if p.get("subtitle_format", "Best available") == "Best available" else p["subtitle_format"].lower() + "/best",

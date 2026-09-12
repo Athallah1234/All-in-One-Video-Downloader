@@ -9,12 +9,13 @@ from app.core.format_builder import build_options
 
 def _final_extension(info, preferences):
     mode = preferences.get("mode", "Video")
-    if mode == "Audio" or preferences.get("format") == "Audio Only":
+    audio_only = mode == "Audio" or preferences.get("format") in {"Audio Only", "Best Audio"}
+    if mode not in {"Subtitle", "Metadata"} and (mode == "Audio" or preferences.get("format") == "Audio Only"):
         audio = preferences.get("audio_format", "MP3").casefold()
         if audio != "best audio":
             return "ogg" if audio == "vorbis" else audio
     container = preferences.get("container", "Auto").casefold()
-    if container != "auto" and mode not in {"Audio", "Subtitle", "Metadata"}:
+    if container != "auto" and not audio_only and mode not in {"Subtitle", "Metadata"}:
         return container
     if preferences.get("format") in {"MP4", "WebM"}:
         return preferences["format"].casefold()
@@ -23,7 +24,7 @@ def _final_extension(info, preferences):
 
 def _entries(info):
     values = info.get("entries")
-    return [entry for entry in values if entry] if values is not None else [info]
+    return list(values) if values is not None else [info]
 
 
 def _selected(entries, preferences):
@@ -61,18 +62,23 @@ def _selected(entries, preferences):
     if preferences.get("mode") == "Channel" and preferences.get("channel_selection") == "Date Range":
         beginning = str(preferences.get("date_from", ""))
         ending = str(preferences.get("date_to", ""))
-        selected = [entry for entry in selected if (not beginning or str(entry.get("upload_date", "")) >= beginning)
+        selected = [entry for entry in selected if entry and (not beginning or str(entry.get("upload_date", "")) >= beginning)
                     and (not ending or str(entry.get("upload_date", "")) <= ending)]
     return selected
 
 
-def predicted_output_paths(info, preferences):
+def predicted_output_paths(info, preferences, *, already_selected=False):
     """Return conservative final-media and sidecar paths for analyzed metadata."""
     options = build_options(preferences)
     output = Path(preferences["output"])
     paths = []
     with YoutubeDL(options | {"quiet": True}) as ydl:
-        for original in _selected(_entries(info), preferences):
+        entries = _entries(info)
+        if not already_selected and preferences.get("mode") in {"Playlist", "Channel"}:
+            entries = _selected(entries, preferences)
+        for original in entries:
+            if not original:
+                continue
             entry = dict(original)
             entry.setdefault("playlist_index", original.get("playlist_index"))
             entry["ext"] = _final_extension(entry, preferences)
@@ -82,7 +88,7 @@ def predicted_output_paths(info, preferences):
                 paths.append(media)
             stem = media.with_suffix("")
             if preferences.get("description"):
-                paths.append(stem.with_suffix(".description"))
+                paths.append(Path(str(stem) + ".description"))
             if preferences.get("info_json") or mode == "Metadata":
                 paths.append(Path(ydl.prepare_filename(entry, "infojson")))
             if preferences.get("thumbnail"):
@@ -100,7 +106,7 @@ def predicted_output_paths(info, preferences):
     return list(dict.fromkeys(output / path.name for path in paths))
 
 
-def existing_output_files(info, preferences):
+def existing_output_files(info, preferences, *, already_selected=False):
     """Find predicted files using Windows-compatible case-insensitive comparison."""
     output = Path(preferences["output"])
     try:
@@ -109,5 +115,5 @@ def existing_output_files(info, preferences):
         return []
     except OSError as error:
         raise ValueError(f"Unable to inspect the output folder: {error}") from None
-    return [existing[path.name.casefold()] for path in predicted_output_paths(info, preferences)
+    return [existing[path.name.casefold()] for path in predicted_output_paths(info, preferences, already_selected=already_selected)
             if path.name.casefold() in existing]

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from collections import deque
 from dataclasses import asdict
 from pathlib import Path
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QSignalBlocker, QItemSelectionModel
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPlainTextEdit, QCheckBox, QMenu, QApplication, QFileDialog, QMessageBox, QProgressBar)
 from app.core.models import Status, TERMINAL
@@ -66,6 +66,7 @@ class QueueView(QWidget):
 
     def refresh(self):
         selected = self.selected_ids()
+        blocker = QSignalBlocker(self.table)
         self.ids = list(self.manager.tasks)
         self.table.setRowCount(len(self.ids))
         from PySide6.QtWidgets import QTableWidgetItem
@@ -92,6 +93,12 @@ class QueueView(QWidget):
             bar.setRange(0, 0 if indeterminate else 100)
             if not indeterminate:
                 bar.setValue(int(task.progress))
+        self.table.clearSelection()
+        for row, identifier in enumerate(self.ids):
+            if identifier in selected:
+                self.table.selectionModel().select(self.table.model().index(row, 0),
+                    QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
+        blocker.unblock()
         waiting = sum(t.status == Status.WAITING for t in self.manager.tasks.values())
         paused = sum(t.status in {Status.PAUSING, Status.PAUSED} for t in self.manager.tasks.values())
         self.label.setText(f"Download queue | {len(self.ids)} items | {len(self.manager.workers)} workers | {waiting} waiting | {paused} paused / pausing")

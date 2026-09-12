@@ -40,6 +40,9 @@ class Settings:
         saved = {}
         try:
             saved = json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(saved, dict):
+                saved = {}
+                raise ValueError("Settings must be a JSON object")
             for key, default in DEFAULTS.items():
                 if key not in SESSION_KEYS and key in saved and type(saved[key]) is type(default):
                     self.values[key] = saved[key]

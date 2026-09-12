@@ -28,6 +28,8 @@ class QueueManager(QObject):
         self.retry_timers = {}
 
     def add(self, url: str, options: dict, mode: str):
+        if self.closing:
+            return None
         task = Task(url=url, options=options.copy(), media_type=mode)
         task.options.setdefault("_temp_id", task.id)
         self.tasks[task.id] = task
